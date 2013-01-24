@@ -396,4 +396,31 @@ module DataOut
       end
     end
   end
+
+  # CSV出力
+  class CsvOutput < Output
+    type "csv"
+
+    def initialize(out, opts = {})
+      @out = out
+      @opts = opts
+    end
+
+    def display(keys, res)
+      @out.puts "#" + keys.join(',')
+      res.each do |row|
+        @out.puts row.map{|v| escape(v)}.join(',')
+      end
+    end
+
+    def escape(v)
+      if /[,"\n]/ =~ v
+        '"' + v.gsub(/"/, '""') + '"'
+      else
+        v
+      end
+    end
+  end
 end
+
+# vim:set ts=2 sw=2 et:
