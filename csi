@@ -1,0 +1,783 @@
+#!/bin/sh
+MYRUBY="$HOME/bin/ruby-trunk /opt/local/bin/ruby1.9 $HOME/bin/ruby"
+for rubybin in $MYRUBY `echo $PATH | sed "s/:/\/ruby /g"`/ruby; do
+  if [ -x "$rubybin" -a -z "$RUBY" ]; then
+    RUBY="$rubybin"
+  fi
+done
+exec "${RUBY:?ruby is not found}" -x "$0" "$@"
+#!ruby
+# -*- coding: utf-8 -*-
+#
+# csi - Common SQL Interface
+#
+# TODO
+#   - 表示変換アダプタ対応
+#   - DB設定内容引数指定
+#   - ヘッダ表示オプション
+#   - appendix 表示オプション
+#   - PostgreSQL
+#   - MySQL
+#   - sqlite3
+#   - EAW属性取得の高速化(現在はCSI_EAW環境変数定義時のみEAW使用)
+#
+# Author: kaieu
+#
+
+RUBY_VERSION >= '1.9.2' or abort "#$0: ruby 1.9.2 or higher required."
+
+require 'yaml'
+require 'optparse'
+require 'pathname'
+#require 'io/console'
+
+$LOAD_PATH << Pathname(__FILE__).realpath.parent + "lib"
+require 'dataout'
+
+module Csi
+  APPNAME = 'csi'
+  DEFAULT_CONF = '.csi.conf'
+  APPTITLE = "Common SQL interface"
+
+  RESERVED_WORDS = %w(
+    SELECT INSERT UPDATE DELETE TRUNCATE EXECUTE COMMIT ROLLBACK BEGIN
+    EXPLAIN ANALYZE CREATE DROP DATABASE TABLE COLUMN SYNONYM ALTER
+  )
+
+  # コマンド行オプションの定義
+  OPTIONS = {
+    pagesize: {
+      description: 'show header per <pagesize> rows',
+      parser_opt: ['--pagesize=size', 'show header per <pagesize> rows', Integer],
+      convert: proc{|v| Integer(v)}
+    },
+    format: {
+      description: "output format type (table, detail)",
+      parser_opt: ['--format=type', "Format type: table, detal"],
+      convert: proc{|v| v},
+    },
+  }
+
+  module Db
+    ConnectorSpec = Struct.new(:types, :description, :connection_class)
+
+    # DBアダプタのベースクラス
+    class Connection
+      @@specs = []
+      @@spec_map_by_type = {}
+
+      def self.new_connection(type)
+        @@spec_map_by_type[type].connection_class.new
+      end
+
+      def self.connect(type, connstr, user, pass)
+        new_connection(type).tap do |c|
+          c.connect(connstr, user, pass)
+        end
+      end
+
+      def self.add_factory(types, description)
+        types = Array(types)
+        spec = ConnectorSpec.new(types, description, self)
+        @@specs << spec
+        registered_types = []
+        types.each do |type|
+          next if @@spec_map_by_type[type]
+          @@spec_map_by_type[type] = spec
+          registered_types << type
+        end
+        spec.types = registered_types
+      end
+
+      def self.specs
+        @@specs
+      end
+    end
+
+    class DummyConnection < Connection
+      add_factory 'dummy', 'No connect, no query.'
+
+      def connect(*argv)
+        puts "CONNECT #{argv.join(' ')}"
+      end
+#      def connect(*argv); puts "#{__method__} #{argv.join(' ')}"; end
+#      def query(*argv); puts "#{__method__} #{argv.join(' ')}"; end
+#      def close(*argv); puts "#{__method__} #{argv.join(' ')}"; end
+    end
+
+    module_function
+    def load_drivers
+      begin
+        require 'db'
+      rescue LoadError
+        puts "DB driver load error: #$!"
+      end
+    end
+  end
+
+  # 設定ファイル
+  module Config
+    module_function
+
+    # 設定ファイルを読み込んで :dbconfs, :aliases, :pager を持つハッシュを返す
+    def load_rc(*files)
+      rc = {}
+      loaded = 0
+      files.each do |file|
+        yaml = YAML.load_file(file)
+        dbconfs = yaml["database"]
+        aliases = {}
+        yaml["sqlalias"] and yaml["sqlalias"].each do |k, v|
+          aliases['\\' + k] = v
+        end
+        rc[:dbconfs]     = dbconfs || {}
+        rc[:aliases]     = aliases
+        rc[:pager]       = yaml["pager"]
+        rc[:environment] = yaml["environment"]
+        loaded += 1
+      end
+      rc
+    rescue Errno::ENOENT
+      raise if loaded == 0
+      rc
+    end
+  end
+
+  # 実行環境
+  class Environment
+    attr_accessor :conn, :out, :use_pager, :pager, :commands, :aliases, :opts
+    attr_accessor :vars, :history, :dbspec, :tmp_out
+    def initialize
+      reset
+    end
+    def reset
+      @out       = STDOUT
+      @use_pager = false
+    end
+  end
+
+  # 1行入力処理クラス
+  class LineInput
+    def setup_readline
+      begin
+        require 'readline'
+      rescue LoadError
+        puts "(readline disabled)"
+      end
+    end
+
+    def getline(prompt)
+      r = if defined?(Readline)
+        Readline.readline(prompt, true)
+      else
+        print prompt
+        gets
+      end
+      return r.chomp if r
+      puts # for command line
+      r
+    end
+  end
+
+  # SQL文パース処理
+  class SqlSlicer
+    def initialize
+      @buff = []
+    end
+
+    def search_delim(line, delim = ";")
+      quote = nil
+      line.chars.with_index do |c, i|
+        if quote
+          quote = nil if c == quote
+        elsif c == '"' || c == "'"
+          quote = c
+        elsif c == delim
+          return i
+        end
+      end
+      nil
+    end
+
+    def sweep(&b)
+      statement = @buff.join("\n")
+      b.call statement unless statement.empty?
+      @buff = []
+    end
+
+    # 引数newlineを内部バッファに連結し、SQLの1文単位でblockを呼ぶ
+    def slice_statement(newline, &b)
+      while newline
+        if empty? && newline == '\begin'
+          @in_block = true
+          newline = nil
+        elsif @in_block && newline == '\end'
+          sweep(&b)
+          @in_block = false
+          newline = nil
+        elsif @in_block
+          @buff << newline
+          newline = nil
+        elsif pos = search_delim(newline)
+          @buff << newline[0, pos]
+          sweep(&b)
+          newline = newline[(pos + 1) .. -1]
+        else
+          @buff << newline if /^\s*$/ !~ newline
+          newline = nil
+        end
+      end
+    end
+
+    def empty?
+      @buff.empty? && !@in_block
+    end
+  end
+
+  class Action
+    def initialize(type, &b)
+      @type = type
+      @proc = b
+    end
+
+    def query?
+      @type == :query
+    end
+
+    def call(*a, &b)
+      @proc.call *a, b
+    end
+  end
+
+  # コマンド入力処理
+  class Cui
+    PROMPT  = APPNAME + "> "
+    PROMPT2 = " " * APPNAME.size + "> "
+
+    class Exit < Exception; end
+
+    attr_accessor :complement_proc
+    attr_accessor :prompt
+    attr_accessor :prompt2
+
+    def initialize(controller, interactive)
+      @controller = controller
+      @input = LineInput.new
+      @input.setup_readline if interactive
+
+      @prompt = PROMPT
+      @prompt2 = PROMPT2
+
+      @inbuf = SqlSlicer.new
+    end
+
+    def complement(s)
+      complement_proc ? complement_proc.call(s) : s
+    end
+
+    def getline(prompt)
+      @input.getline prompt
+    end
+
+    # 表示環境を整えてから、表示用IOオブジェクト付きでブロックを実行する。
+    # 表示環境では、ページャ使用(use_pager)が有効ならページャ経由で起動。
+    # また、例外はキャッチされ画面に出して戻る。
+    def display_environment(env)
+      if env.use_pager
+        IO.popen(env.pager, "w") do |io|
+          env.out = io
+          yield env
+        end
+      else
+        env.out = STDOUT
+        yield env
+      end
+    rescue Exception => e
+      puts "ERROR: #{e}"
+      puts e.backtrace
+    end
+
+    def process_commands(env, inp)
+      env.commands.each do |cmd|
+        next unless cmd[:key] === inp
+        res = cmd[:proc].call(@controller, env, inp)
+        if res.is_a?(Hash)
+          if res[:input]
+            inp = res[:input]
+          elsif res[:after] == :exit
+            raise Exit
+          elsif res[:action]
+            return res[:action]
+          end
+        else
+          return nil
+        end
+      end
+      inp
+    end
+
+    def process_alias(env, inp)
+      parts = inp.split(/\s+/)
+      if env.aliases[parts.first]
+        idx = 0
+        inp = env.aliases[parts.first].gsub(/\?/) do
+          idx += 1
+          parts[idx]
+        end
+      end
+      inp
+    end
+
+    def command_loop(env)
+      inp = @input.getline(@inbuf.empty? ? @prompt : @prompt2)
+      return true if /^\s*$/ =~ inp
+      env.reset
+
+      inp = process_commands(env, inp) or return true
+      if inp.is_a?(Action)
+        display_environment(env) do |env|
+          yield env, inp
+        end
+        return true
+      end
+      inp = process_alias(env, inp)    if @inbuf.empty?
+      inp = complement(inp)            if @inbuf.empty?
+
+      @inbuf.slice_statement(inp) do |sql|
+        display_environment(env) do |env|
+          env.history << sql
+          yield env, sql
+        end
+      end
+      true
+    rescue Exit
+      false
+    end
+  end
+
+  class BlackHole
+    def method_missing(*arg)
+    end
+  end
+
+  class Controller
+
+    class DbChangeRequest < Exception
+      attr_reader :dbspec
+      def initialize(dbspec = nil)
+        @dbspec = dbspec
+      end
+    end
+
+    # コマンド定義
+    # key:   コマンド入力行とマッチさせるキー(コマンド名)。===で比較する。
+    # name:  key の代わりにヘルプに出すコマンド名 (keyがnilや正規表現などの場合)
+    # desc:  ヘルプに出す説明文
+    # proc:  コマンド処理ブロック。引数は Controller, Environment, 入力行文字列
+    #        結果としてハッシュを返すと後続の処理をコントロールできる。
+    # alias: 他のコマンドの別名とする場合、そのコマンドのキーを指定する。
+    COMMANDS = [
+      { key: '\q',
+        desc: "Exit #{APPNAME}",
+        proc: proc{{after: :exit}},
+      },
+      { key:  nil, name: 'C-d', alias: '\q', },
+      { key: /^\\c\b/,
+        name: '\c [dbspec]',
+        desc: 'Change connection to database',
+        proc: proc{|ctrl, env, inp|
+          /^\\c *(\S+)/ =~ inp
+          raise DbChangeRequest, $1
+        },
+      },
+      { key: /\\h\b/,
+        name: '\h',
+        desc: "Show this help",
+        proc: proc{|ctrl, env| ctrl.show_help env},
+      },
+      { key:  /^null / ,
+        name: 'null <cmd>',
+        desc: "Output to null",
+        proc: proc{|ctrl, env, inp|
+          env.tmp_out = BlackHole.new
+          { input: inp[5..-1] }
+        },
+      },
+      { key:  /^lv\b/ ,
+        name: 'lv <cmd>',
+        desc: "Use pager for trailing command",
+        proc: proc{|ctrl, env, inp|
+          env.use_pager = true
+          { input: inp[3..-1] }
+        },
+      },
+      { key: /^\\opt\b/,
+        name: '\opt [<var>=<value>]',
+        desc: 'show/set option',
+        proc: proc{|ctrl, env, inp|
+          case inp
+          when /^\\opt ([a-z]+)=(.*)$/
+            puts "OPTION: #$1 = #$2"
+            key = $1.to_sym
+            env.opts[key] = OPTIONS[key][:convert].call($2)
+          when /^\\opt\s*$/
+            env.opts.each do |k, v|
+              puts "#{k} = #{v}"
+            end
+          else
+            puts "ERROR: illegal option format"
+          end
+        },
+      },
+      { key: '/',
+        desc: 'last query',
+        proc: proc{|ctrl, env, inp|
+          if env.history.empty?
+            puts "no sql history"
+          else
+            { input: env.history.last + ";" }
+          end
+        },
+      },
+      { key: /^\\d\b/,
+        name: '\d object name',
+        desc: 'describe schema object(table)',
+        proc: proc{|ctrl, env, inp|
+          if /^\\d\s+(.*)$/ =~ inp
+            table = $1
+            { action: Action.new(:query) {|env| env.conn.describe(table) } }
+          else
+            puts "object name needed"
+          end
+        },
+      },
+      { key: /^\\his\b/,
+        name: '\his',
+        desc: 'show sql history',
+        proc: proc{|ctrl, env, inp|
+          case inp
+          when /^\\his\s+(\d+)$/
+            puts "his: #$1"
+          when /^\\his\s*$/
+            env.history.each do |h|
+              puts h
+            end
+          else
+            puts "ERROR: illegal option format"
+          end
+        },
+      },
+    ]
+
+    def initialize
+      COMMANDS.map! do |org|
+        if a = org[:alias] and als = COMMANDS.find{|c| c[:key] == a}
+          org.delete :alias
+          als.merge org
+        else
+          org
+        end
+      end
+    end
+
+    def query_action(sql)
+      Action.new(:query) do |env|
+        env.out.puts "Query: #{sql}"
+        env.conn.query sql
+      end
+    end
+
+    def eval_print(env, act)
+      act = query_action(act) if act.is_a?(String) 
+
+      start = Time.now
+      res = act.call(env)
+      elapsed = Time.now - start
+      return unless act.query?
+
+      io = env.out
+      unless res.respond_to?(:columns)
+        io.puts "Result: #{res} in #{elapsed} sec"
+        return
+      end
+      io.puts "Query returned in #{elapsed} sec"
+      output_class = DataOut::Output.types[env.opts[:format] || "table"]
+      output_class.new(env.tmp_out || io, env.opts).display res.columns, res
+      env.tmp_out = nil
+      io.puts "#{res.size} row(s)"
+      io.puts
+    end
+
+    def to_key(v)
+      return nil if v.nil?
+      v.chomp!
+      Integer(v) rescue v
+    end
+
+    def manual_conf(cui)
+      {
+        'type'   => cui.getline("db type="),
+        'dburl'  => cui.getline("db connection string="),
+        'dbuser' => cui.getline("user="),
+        'dbpass' => cui.getline("password="),
+      }
+    end
+
+    def commandline_connection_select(dbconfs, opts)
+      dbspec = opts[:dbspec]
+      if /^(\w+):([\w\/]+)@(.+)$/ =~ dbspec
+        conf = {
+          'type'   => $1,
+          'dburl'  => $3,
+          'dbuser' => $2.split('/')[0],
+          'dbpass' => $2.split('/')[1],
+        }
+        conf['dbpass'] ||= conf['dbuser']
+        dbspec = conf['dbuser'] # + '@' + conf['dburl']
+        return dbspec, conf
+      end
+      return to_key(dbspec), dbconfs[dbspec]
+    end
+
+    def interactive_connection_select(dbconfs, cui)
+      DataOut::TableOutput.new.display ["key", "type", "user", "connection string"],
+        [["0", "manual", "manual", "manual"]] +
+        dbconfs.map{|e| [e[0], e[1]['type'], e[1]['dbuser'], e[1]['dburl']] }
+      while true
+        sel = to_key(cui.getline("Choose DB key> "))
+        if sel == 0
+          dbspec = ""
+          conf   = manual_conf(cui)
+          return nil, conf
+        end
+        exit unless sel
+        if dbconfs[sel]
+          return sel, dbconfs[sel]
+        end
+      end
+    end
+
+    def embed_vars(conf, cui)
+      var_names = conf.values.grep(/\$\{(\w+)\}/){$1}.sort.uniq
+      vars = {}
+      var_names.each do |name|
+        vars[name] = cui.getline("Var #{name}:")
+      end
+      vars.each do |vname, vvalue|
+        conf.each do |cname, cvalue|
+          cvalue.gsub! /\$\{#{vname}\}/, vvalue
+        end
+      end
+    end
+
+    def select_connection(env, dbconfs, cui, opts = {})
+      if opts[:dbspec]
+        dbspec, conf = commandline_connection_select(dbconfs, opts)
+      else
+        dbspec, conf = interactive_connection_select(dbconfs, cui)
+      end
+      abort "DB configuration error" unless conf
+
+      embed_vars conf, cui if conf
+
+      begin
+        env.conn = Db::Connection.connect(conf['type'], conf['dburl'],
+                                          conf['dbuser'], conf['dbpass'])
+        env.dbspec = dbspec
+        puts "connected: #{conf['dbuser']}@#{conf['dburl']} (#{conf['type']})"
+        puts
+      rescue
+        abort "CONNECT ERROR: #$!"
+      end
+    end
+
+    def show_help(env)
+      DataOut::TableOutput.new.display ['command', 'description'],
+        env.commands.map{|c| [c[:name] || c[:key], c[:desc]]} +
+        env.aliases.map{|k, v| [k, v]}
+    end
+
+    def complement_sql(sql)
+      if /\A\s*([A-Za-z0-9_,]+)\s*\z/ =~ sql && !RESERVED_WORDS.include?($1.upcase)
+        "SELECT * FROM #{$1.split(/,/).join(" NATURAL JOIN ")};"
+      elsif /^\s*\[(.+)\]\s*$/ =~ sql
+        case $1
+        when /^\s*(.+)\s+in\s+(.+)\s+if\s+(.+)\s*$/i
+          "SELECT #$1 FROM #$2 WHERE #$3;"
+        when /^\s*(.+)\s+in\s+(.+)\s*$/i
+          "SELECT #$1 FROM #$2;"
+        when /^\s*(.+)\s*$/
+          "SELECT * FROM #$1;"
+        end
+      else
+        sql
+      end
+    end
+
+    def list_dbtypes
+      puts "Supported DB types:"
+      Db.load_drivers
+      DataOut::TableOutput.new.display ["types", "description"],
+        Db::Connection.specs.map{|s| [s.types.join(", "), s.description]}
+    end
+
+    def setup(opts)
+      opts[:configfile] ||= File.join(ENV['HOME'], DEFAULT_CONF)
+      rc = Config.load_rc(opts[:configfile], opts[:configfile] + ".shadow")
+
+      if rc[:environment]
+        rc[:environment].each do |k, v|
+          ENV[k] = v
+        end
+      end
+      Db.load_drivers
+
+      cui = Cui.new(self, opts[:interactive])
+      cui.complement_proc = proc{|s| complement_sql s}
+      env = Environment.new.tap do |e|
+        select_connection e, rc[:dbconfs], cui, opts
+        e.commands = COMMANDS
+        e.aliases  = rc[:aliases]
+        e.pager    = rc[:pager]
+        e.opts     = opts
+        e.history  = []
+      end
+
+      return rc, env, cui
+    end
+
+    def batch_exec(scripts, env)
+      scripts.each do |script|
+        if script[:file]
+          inbuf = SqlSlicer.new
+          File.read(script[:file]).lines.each do |l|
+            inbuf.slice_statement(l.chomp) do |sql|
+              eval_print env, sql
+            end
+          end
+        end
+        if script[:sql]
+          eval_print env, complement_sql(script[:sql]).gsub(";", "")
+        end
+      end
+    rescue Errno::EPIPE
+      STDERR.puts "#{APPNAME}: broken pipe"
+    end
+
+    def command_loop(env, cui, rc)
+      cui.prompt = (env.dbspec || APPNAME) + "> "
+      cui.command_loop env do |env, sql|
+        eval_print env, sql
+      end
+    rescue DbChangeRequest => e
+      env.conn.close
+      select_connection env, rc[:dbconfs], cui, dbspec: e.dbspec
+      true
+    end
+
+    def main(opts)
+      if opts[:type_list]
+        list_dbtypes
+        return
+      end
+
+      rc, env, cui = setup(opts)
+
+      unless opts[:script].empty?
+        batch_exec opts[:script], env
+        return
+      end
+
+      puts "\\h for help"
+      while true
+        command_loop env, cui, rc or break
+      end
+    ensure
+      env.conn.close if env && env.conn
+    end
+  end
+
+  def self.parse_esql(esql)
+    cond = nil
+    esql.sub!(/\s*\[\s*(.*)\s*\]/) do
+      ph = $1
+      case ph
+      when /^\s*(order by|group by|having|where)/i
+        cond = ph
+      when /\S/
+        cond = "WHERE #{ph}"
+      end
+      ''
+    end
+
+    sel = "*"
+    esql.sub!(/\s*->\s*(.+)\s*$/) do
+      sel = $1
+      ''
+    end
+
+    esql.gsub!(/(\+?)\((.+)\)\s*(\S+)/) do
+      plus = $1
+      key = $2
+      table = $3
+      (plus ? 'LEFT OUTER' : 'INNER') +
+      ' JOIN '+ table +
+      (/=/ =~ key ? " ON #{key}" : " USING (#{key})")
+    end
+
+    "SELECT #{sel} FROM #{esql} #{cond}"
+  end
+
+  def self.parse_argv(argv)
+    {}.tap do |opts|
+      opts[:script] = []
+      OptionParser.new do |op|
+        op.on('-c config', '--config=config', "Specify config file") do |config|
+        end
+        op.on('-f script-file', "SQL Script file") do |file|
+          opts[:script] << {:file => file}
+        end
+        op.on('-d dbspec', "Specify DB by key or DB-spec") do |db|
+          opts[:dbspec] = db
+        end
+        op.on('-e sql', "Specify SQL to be executed") do |sql|
+          opts[:script] << {:sql => sql}
+        end
+        op.on('-E extended sql') do |esql|
+          opts[:sql] = parse_esql(esql)
+        end
+        op.on('-l', "Show all available db type") do
+          opts[:type_list] = true
+        end
+        op.on('--clob', "Clob detail mode") do
+          opts[:appendix] = true
+          opts[:pagesize] = 1
+        end
+        op.on('--count table', "SELECT COUNT(*) FROM table") do |t|
+          opts[:script] << {sql: "SELECT COUNT(*) FROM #{t}"}
+        end
+        op.on('--truncate table', "TRUNCATE TABLE table") do |t|
+          opts[:script] << {sql: "TRUNCATE TABLE #{t}"}
+        end
+        OPTIONS.each do |key, conf|
+          next unless conf[:parser_opt]
+          op.on(*conf[:parser_opt]) do |val|
+            opts[key] = conf[:convert].call(val)
+          end
+        end
+        op.parse! argv
+      end
+
+      opts[:interactive] = !opts[:script].empty?
+    end
+  end
+
+  def self.main(argv)
+    puts APPNAME + " - " + APPTITLE
+    Controller.new.main parse_argv(argv)
+  end
+end
+
+Csi.main ARGV if $0 == __FILE__
+
+# vim:set ts=2 sw=2 et ft=ruby:
