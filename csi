@@ -733,6 +733,7 @@ module Csi
       opts[:script] = []
       OptionParser.new do |op|
         op.on('-c config', '--config=config', "Specify config file") do |config|
+          opts[:configfile] = config
         end
         op.on('-f script-file', "SQL Script file") do |file|
           opts[:script] << {:file => file}
