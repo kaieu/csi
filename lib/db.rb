@@ -49,7 +49,7 @@ module Csi
         end
 
         def each
-          return to_enum  unless block_given?
+          return to_enum unless block_given?
           @table.columns.each do |col|
             yield [col.name, col.type_string]
           end
