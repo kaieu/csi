@@ -745,7 +745,7 @@ module Csi
           opts[:script] << {:sql => sql}
         end
         op.on('-E extended sql') do |esql|
-          opts[:sql] = parse_esql(esql)
+          opts[:script] << {:sql => parse_esql(esql)}
         end
         op.on('-l', "Show all available db type") do
           opts[:type_list] = true
