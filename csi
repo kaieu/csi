@@ -482,8 +482,16 @@ module Csi
 
     def query_action(sql)
       Action.new(:query) do |env|
-        env.out.puts "Query: #{sql}"
-        env.conn.query sql
+        io = env.out
+        io.puts "Query: #{sql}" # unless quiet
+        begin
+          res = env.conn.query(sql)
+        rescue
+          pos = $!.respond_to?(:parseErrorOffset) ? $!.parseErrorOffset : nil
+          io.puts " " * (pos + 7) + "^" if pos
+          io.puts "Error: #$!"
+          return
+        end
       end
     end
 
