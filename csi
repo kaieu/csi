@@ -487,8 +487,9 @@ module Csi
         begin
           res = env.conn.query(sql)
         rescue
-          pos = $!.respond_to?(:parseErrorOffset) ? $!.parseErrorOffset : nil
-          io.puts " " * (pos + 7) + "^" if pos
+          if $!.respond_to?(:parseErrorOffset)
+            io.puts " " * ($!.parseErrorOffset + 7) + "^"
+          end
           io.puts "Error: #$!"
           return
         end
