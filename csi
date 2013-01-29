@@ -442,7 +442,7 @@ module Csi
           end
         },
       },
-      { key: /^\\d\b/,
+      { key: /^\\d\s/,
         name: '\d object name',
         desc: 'describe schema object(table)',
         proc: proc{|ctrl, env, inp|
