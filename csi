@@ -103,9 +103,9 @@ module Csi
       def connect(*argv)
         puts "CONNECT #{argv.join(' ')}"
       end
-#      def connect(*argv); puts "#{__method__} #{argv.join(' ')}"; end
-#      def query(*argv); puts "#{__method__} #{argv.join(' ')}"; end
-#      def close(*argv); puts "#{__method__} #{argv.join(' ')}"; end
+      def connect(*argv); puts "(dummy)#{__method__} #{argv.join(' ')}"; end
+      def query(*argv); puts "(dummy)#{__method__} #{argv.join(' ')}"; end
+      def close(*argv); puts "(dummy)#{__method__} #{argv.join(' ')}"; end
     end
 
     module_function
