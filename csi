@@ -110,7 +110,7 @@ module Csi
       begin
         require 'db'
       rescue LoadError
-        puts "DB driver load error: #$!"
+        STDERR.puts "DB driver load error: #$!"
       end
     end
   end
@@ -162,7 +162,7 @@ module Csi
       begin
         require 'readline'
       rescue LoadError
-        puts "(readline disabled)"
+        STDERR.puts "(readline disabled)"
       end
     end
 
@@ -293,8 +293,8 @@ module Csi
         yield env
       end
     rescue Exception => e
-      puts "ERROR: #{e}"
-      puts e.backtrace
+      STDERR.puts "ERROR: #{e}"
+      STDERR.puts e.backtrace
     end
 
     def process_commands(env, inp)
@@ -433,7 +433,7 @@ module Csi
         desc: 'last query',
         proc: proc{|ctrl, env, inp|
           if env.history.empty?
-            puts "no sql history"
+            STDERR.puts "no sql history"
           else
             { input: env.history.last + ";" }
           end
@@ -447,7 +447,7 @@ module Csi
             table = $1
             { action: Action.new(:query) {|env| env.conn.describe(table) } }
           else
-            puts "object name needed"
+            STDERR.puts "object name needed"
           end
         },
       },
@@ -593,8 +593,8 @@ module Csi
         env.conn = Db::Connection.connect(conf['type'], conf['dburl'],
                                           conf['dbuser'], conf['dbpass'])
         env.dbspec = dbspec
-        puts "connected: #{conf['dbuser']}@#{conf['dburl']} (#{conf['type']})"
-        puts
+        STDERR.puts "connected: #{conf['dbuser']}@#{conf['dburl']} (#{conf['type']})"
+        STDERR.puts
       rescue
         abort "CONNECT ERROR: #$!"
       end
@@ -697,7 +697,7 @@ module Csi
         return
       end
 
-      puts "\\h for help"
+      STDERR.puts "\\h for help"
       while true
         command_loop env, cui, rc or break
       end
@@ -783,7 +783,7 @@ module Csi
   end
 
   def self.main(argv)
-    puts APPNAME + " - " + APPTITLE
+    STDERR.puts APPNAME + " - " + APPTITLE
     Controller.new.main parse_argv(argv)
   end
 end
