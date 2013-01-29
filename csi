@@ -36,7 +36,10 @@ require 'dataout'
 
 module Csi
   APPNAME = 'csi'
-  DEFAULT_CONF = '.csi.conf'
+  DEFAULT_CONFS = [
+    File.join(ENV['HOME'], '.csi.conf'),
+    File.join(ENV['HOME'], 'etc', 'csi.conf'),
+  ]
   APPTITLE = "Common SQL interface"
 
   RESERVED_WORDS = %w(
@@ -630,9 +633,24 @@ module Csi
         Db::Connection.specs.map{|s| [s.types.join(", "), s.description]}
     end
 
+    def search_conffile(specified)
+      if specified
+        unless File.exist?(specified)
+          abort "#{specified} is not found."
+        end
+        return specified
+      end
+      DEFAULT_CONFS.each do |conffile|
+        return conffile if File.exist?(conffile)
+      end
+      return nil
+    end
+
     def setup(opts)
-      opts[:configfile] ||= File.join(ENV['HOME'], DEFAULT_CONF)
-      rc = Config.load_rc(opts[:configfile], opts[:configfile] + ".shadow")
+      conffile = search_conffile(opts[:configfile])
+      abort "no config file found" unless conffile
+      rc = Config.load_rc(conffile, conffile + ".shadow")
+      opts[:configfile] = conffile
 
       if rc[:environment]
         rc[:environment].each do |k, v|
