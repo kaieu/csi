@@ -483,10 +483,10 @@ module Csi
       end
     end
 
-    def query_action(sql)
+    def query_action(sql, opts)
       Action.new(:query) do |env|
         io = env.out
-        io.puts "Query: #{sql}" # unless quiet
+        io.puts "Query: #{sql}" unless opts[:quiet]
         begin
           res = env.conn.query(sql)
         rescue
@@ -499,8 +499,8 @@ module Csi
       end
     end
 
-    def eval_print(env, act)
-      act = query_action(act) if act.is_a?(String) 
+    def eval_print(env, act, opts)
+      act = query_action(act, opts) if act.is_a?(String) 
 
       start = Time.now
       res = act.call(env)
@@ -509,15 +509,15 @@ module Csi
 
       io = env.out
       unless res.respond_to?(:columns)
-        io.puts "Result: #{res} in #{elapsed} sec"
+        io.puts "Result: #{res} in #{elapsed} sec" unless opts[:quiet]
         return
       end
-      io.puts "Query returned in #{elapsed} sec"
+      io.puts "Query returned in #{elapsed} sec" unless opts[:quiet]
       output_class = DataOut::Output.types[env.opts[:format] || "table"]
       output_class.new(env.tmp_out || io, env.opts).display res.columns, res
       env.tmp_out = nil
-      io.puts "#{res.size} row(s)"
-      io.puts
+      io.puts "#{res.size} row(s)" unless opts[:quiet]
+      io.puts unless opts[:quiet]
     end
 
     def to_key(v)
@@ -596,8 +596,10 @@ module Csi
         env.conn = Db::Connection.connect(conf['type'], conf['dburl'],
                                           conf['dbuser'], conf['dbpass'])
         env.dbspec = dbspec
-        STDERR.puts "connected: #{conf['dbuser']}@#{conf['dburl']} (#{conf['type']})"
-        STDERR.puts
+        unless opts[:quiet]
+          STDERR.puts "connected: #{conf['dbuser']}@#{conf['dburl']} (#{conf['type']})"
+          STDERR.puts
+        end
       rescue
         abort "CONNECT ERROR: #$!"
       end
@@ -679,22 +681,22 @@ module Csi
           inbuf = SqlSlicer.new
           File.read(script[:file]).lines.each do |l|
             inbuf.slice_statement(l.chomp) do |sql|
-              eval_print env, sql
+              eval_print env, sql, opts
             end
           end
         end
         if script[:sql]
-          eval_print env, complement_sql(script[:sql]).gsub(";", "")
+          eval_print env, complement_sql(script[:sql]).gsub(";", ""), opts
         end
       end
     rescue Errno::EPIPE
       STDERR.puts "#{APPNAME}: broken pipe"
     end
 
-    def command_loop(env, cui, rc)
+    def command_loop(env, cui, rc, opts)
       cui.prompt = (env.dbspec || APPNAME) + "> "
       cui.command_loop env do |env, sql|
-        eval_print env, sql
+        eval_print env, sql, opts
       end
     rescue DbChangeRequest => e
       env.conn.close
@@ -703,6 +705,8 @@ module Csi
     end
 
     def main(opts)
+      STDERR.puts APPNAME + " - " + APPTITLE unless opts[:quiet]
+
       if opts[:type_list]
         list_dbtypes
         return
@@ -715,9 +719,9 @@ module Csi
         return
       end
 
-      STDERR.puts "\\h for help"
+      STDERR.puts "\\h for help" unless opts[:quiet]
       while true
-        command_loop env, cui, rc or break
+        command_loop env, cui, rc, opts or break
       end
     ensure
       env.conn.close if env && env.conn
@@ -777,6 +781,9 @@ module Csi
         op.on('-l', "Show all available db type") do
           opts[:type_list] = true
         end
+        op.on('-q', "Quiet mode") do 
+          opts[:quiet] = true
+        end
         op.on('--clob', "Clob detail mode") do
           opts[:appendix] = true
           opts[:pagesize] = 1
@@ -801,7 +808,6 @@ module Csi
   end
 
   def self.main(argv)
-    STDERR.puts APPNAME + " - " + APPTITLE
     Controller.new.main parse_argv(argv)
   end
 end
