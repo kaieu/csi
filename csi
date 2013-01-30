@@ -675,7 +675,7 @@ module Csi
       return rc, env, cui
     end
 
-    def batch_exec(scripts, env)
+    def batch_exec(scripts, env, opts)
       scripts.each do |script|
         if script[:file]
           inbuf = SqlSlicer.new
@@ -715,7 +715,7 @@ module Csi
       rc, env, cui = setup(opts)
 
       unless opts[:script].empty?
-        batch_exec opts[:script], env
+        batch_exec opts[:script], env, opts
         return
       end
 
