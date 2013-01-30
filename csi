@@ -751,7 +751,7 @@ module Csi
       plus = $1
       key = $2
       table = $3
-      (plus ? 'LEFT OUTER' : 'INNER') +
+      (plus == '+' ? 'LEFT OUTER' : 'INNER') +
       ' JOIN '+ table +
       (/=/ =~ key ? " ON #{key}" : " USING (#{key})")
     end
