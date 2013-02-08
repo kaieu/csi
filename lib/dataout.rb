@@ -409,7 +409,7 @@ module DataOut
     def display(keys, res)
       @out.puts "#" + keys.join(',')
       res.each do |row|
-        @out.puts row.map{|v| escape(v)}.join(',')
+        @out.puts row.map{|v| escape(v.to_s)}.join(',')
       end
     end
 
