@@ -803,7 +803,7 @@ module Csi
         op.parse! argv
       end
 
-      opts[:interactive] = !opts[:script].empty?
+      opts[:interactive] = opts[:script].empty?
     end
   end
 
