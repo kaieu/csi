@@ -1,0 +1,9 @@
+TODO
+  - 表示変換アダプタ対応
+  - DB設定内容引数指定
+  - ヘッダ表示オプション
+  - appendix 表示オプション
+  - PostgreSQL
+  - MySQL
+  - sqlite3
+  - EAW属性取得の高速化(現在はCSI_EAW環境変数定義時のみEAW使用)
