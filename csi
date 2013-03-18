@@ -674,6 +674,9 @@ module Csi
               eval_print env, sql, opts
             end
           end
+          inbuf.sweep do |sql|
+            eval_print env, sql, opts
+          end
         end
         if script[:sql]
           eval_print env, complement_sql(script[:sql]).gsub(";", ""), opts
