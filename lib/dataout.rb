@@ -175,6 +175,9 @@ end
 
 module DataOut
   class Output
+
+    LOCAL_TIMEZONE = Time.now.zone
+
     def val_to_s(v)
       case v
       when String
@@ -182,6 +185,12 @@ module DataOut
       when BigDecimal
         # 最後の.0はとる
         v.to_s('F').gsub(/\.0$/, '')
+      when Time
+        if v.zone.nil? || v.zone == LOCAL_TIMEZONE
+          v.strftime("%F %T")
+        else
+          v.to_s
+        end
       else
         v.to_s
       end
