@@ -30,6 +30,7 @@ module Csi
     File.join(ENV['HOME'], '.csi.conf'),
     File.join(ENV['HOME'], 'etc', 'csi.conf'),
   ]
+  HISTFILE = File.join(ENV['HOME'], '.csi_history')
   APPTITLE = "Common SQL interface"
 
   RESERVED_WORDS = %w(
@@ -154,6 +155,11 @@ module Csi
     def setup_readline
       begin
         require 'readline'
+        if File.exist?(HISTFILE)
+          File.readlines(HISTFILE).each do |line|
+            Readline::HISTORY << line.chomp
+          end
+        end
       rescue LoadError
         STDERR.puts "(readline disabled)"
       end
@@ -169,6 +175,20 @@ module Csi
       return r.chomp if r
       puts # for command line
       r
+    end
+
+    def add_to_history(item)
+      return unless defined?(Readline)
+      Readline::HISTORY.push item
+    end
+
+    def save
+      return unless defined?(Readline)
+      File.open(HISTFILE, "w") do |f|
+        Readline::HISTORY.each do |line|
+          f.puts line
+        end
+      end
     end
   end
 
@@ -262,6 +282,10 @@ module Csi
       @prompt2 = PROMPT2
 
       @inbuf = SqlSlicer.new
+    end
+
+    def finalize
+      @input.save
     end
 
     def complement(s)
@@ -718,6 +742,7 @@ module Csi
       end
     ensure
       env.conn.close if env && env.conn
+      cui.finalize if cui
     end
   end
 
