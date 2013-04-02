@@ -309,6 +309,8 @@ module Csi
         env.out = STDOUT
         yield env
       end
+    rescue Interrupt
+      puts
     rescue Exception => e
       STDERR.puts "ERROR: #{e}"
       STDERR.puts e.backtrace
@@ -366,6 +368,11 @@ module Csi
           yield env, sql
         end
       end
+      true
+    rescue Interrupt
+      #puts "(interrupted)"
+      #false
+      puts
       true
     rescue Exit
       false
