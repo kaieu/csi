@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 require 'bigdecimal'
 
 class UnicodeEastAsianWidth
@@ -162,6 +164,13 @@ class String
   def ljust(w, pad = " ")
     (w < width) ? self : self + pad * (w - width)
   end
+
+  def center(w, pad = " ")
+    return self if w < width
+    lpad = (w - width) / 2
+    rpad = w - width - lpad
+    return pad * lpad + self + pad * rpad
+  end
 end
 
 module DataOut
@@ -192,6 +201,8 @@ module DataOut
   class TableOutput < Output
     type "table"
 
+    DITTO = "〃"
+
     include StringUtils
 
     def initialize(out = STDOUT, opts = {})
@@ -213,6 +224,8 @@ module DataOut
     def format(val, width)
       val = "" if val.nil?
       case val
+      when DITTO
+        val.center(width)
       when Numeric
         val_to_s(val).rjust(width)
       when String # DecoratedString
@@ -342,8 +355,15 @@ module DataOut
           end
           putline row, widths, (t == :last ? :body_last : :body)
         end
+        prev_row = nil
         rows.each do |row|
-          buff.buffered_output row
+          if prev_row
+            mod_row = row.zip(prev_row).map{|r| (r[0] == r[1] && !r[0].nil?) ? DITTO : r[0]}
+          else
+            mod_row = row
+          end
+          buff.buffered_output mod_row
+          prev_row = row
         end
       end
       put_header keys, widths if buf.row_idx == 0
