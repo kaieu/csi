@@ -327,6 +327,8 @@ module Csi
             raise Exit
           elsif res[:action]
             return res[:action]
+          else
+            return nil
           end
         else
           return nil
@@ -515,7 +517,6 @@ module Csi
             io.puts " " * ($!.parseErrorOffset + 7) + "^"
           end
           io.puts "Error: #$!"
-          return
         end
       end
     end
