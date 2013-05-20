@@ -48,9 +48,29 @@ module Csi
     format: {
       description: "output format type (table, detail)",
       parser_opt: ['--format=type', "Format type: table, detal"],
-      convert: proc{|v| v},
+      convert: proc{|v| v}
+    },
+    ditto: {
+      description: "Use ditto mark",
+      parser_opt: ['--ditto', 'Use ditto mark'],
+      convert: proc{|v| convert_bool(v)}
+    },
+    quiet: {
+      description: "Quiet mode",
+      parser_opt: ["-q", "--quiet", "Quiet mode"],
+      convert: proc{|v| convert_bool(v)}
+    },
     },
   }
+
+  def self.convert_bool(v)
+    case v
+    when "", nil, "0", "false", "no"
+      false
+    else
+      true
+    end
+  end
 
   module Db
     ConnectorSpec = Struct.new(:types, :description, :connection_class)
@@ -810,9 +830,6 @@ module Csi
         end
         op.on('-l', "Show all available db type") do
           opts[:type_list] = true
-        end
-        op.on('-q', "Quiet mode") do 
-          opts[:quiet] = true
         end
         op.on('--clob', "Clob detail mode") do
           opts[:appendix] = true

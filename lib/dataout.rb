@@ -366,7 +366,7 @@ module DataOut
         end
         prev_row = nil
         rows.each do |row|
-          if prev_row
+          if prev_row && @opts[:ditto]
             mod_row = row.zip(prev_row).map{|r| (r[0] == r[1] && !r[0].nil?) ? DITTO : r[0]}
           else
             mod_row = row
