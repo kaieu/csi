@@ -449,6 +449,35 @@ module DataOut
       end
     end
   end
+
+  # TT出力
+  class TabularOutput < Output
+    type "tab"
+
+    def initialize(out, opts = {})
+      @out = out
+      @opts = opts
+    end
+
+    def display(keys, res)
+      @out.puts "#" + keys.join("\t")
+      res.each do |row|
+        @out.puts row.map{|v| escape(v)}.join("\t")
+      end
+    end
+
+    def escape(v)
+      case v
+      when nil
+        '\{null}'
+      else
+        v.to_s.gsub(/\\\{/, '\\{').
+               gsub(/\t/, '\{t}').
+               gsub(/\r/, '\{r}').
+               gsub(/\n/, '\{n}')
+      end
+    end
+  end
 end
 
 # vim:set ts=2 sw=2 et:
