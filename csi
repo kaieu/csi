@@ -60,6 +60,10 @@ module Csi
       parser_opt: ["-q", "--quiet", "Quiet mode"],
       convert: proc{|v| convert_bool(v)}
     },
+    esc: {
+      description: "Decorate with escape sequence",
+      parser_opt: ["--esc", "Use escape sequence to decorate output"],
+      convert: proc{|v| convert_bool(v)}
     },
   }
 

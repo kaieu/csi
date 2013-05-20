@@ -257,17 +257,17 @@ module DataOut
         vals.each.with_index do |val, i|
           bottom = lnum == lines_num - 1
           s = format(val, widths[i])
-          case linetype
-          when :head
-            s = decorate(s, bottom ? '1;4' : '1')
-          when :body_last
-            s = decorate(s, '4') if bottom
-          when :foot
-            s = decorate(s, '1')
+          if @opts[:esc]
+            case linetype
+            when :head
+              s = decorate(s, bottom ? '1;4' : '1')
+            when :body_last
+              s = decorate(s, '4') if bottom
+            when :foot
+              s = decorate(s, '1')
+            end
           end
           @out.print s + " "
-        # end
-        #  @out.print format(val, widths[i]) + " "
         end
         @out.puts
       end
@@ -277,6 +277,11 @@ module DataOut
           @out.puts "    " + l
         end
         @out.puts
+      end
+      unless @opts[:esc]
+        if linetype == :head or linetype == :body_last
+          @out.puts separator(widths).join(" ")
+        end
       end
     end
 
@@ -345,7 +350,6 @@ module DataOut
     def put_header(keys, widths)
       @out.puts
       putline keys, widths, :head
-      #putline separator(widths), widths
     end
 
     def display(keys, rows)
