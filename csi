@@ -331,7 +331,7 @@ module Csi
       if env.use_pager
         IO.popen(env.pager, "w") do |io|
           env.out = io
-          yield env
+          yield env rescue Errno::EPIPE
         end
       else
         env.out = STDOUT
