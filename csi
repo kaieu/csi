@@ -184,8 +184,12 @@ module Csi
 
     def save
       return unless defined?(Readline)
+      history_reverse_map = {}
+      Readline::HISTORY.reverse_each do |line|
+        history_reverse_map[line] = line
+      end
       File.open(HISTFILE, "w") do |f|
-        Readline::HISTORY.each do |line|
+        history_reverse_map.values.reverse_each do |line|
           f.puts line
         end
       end
