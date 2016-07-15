@@ -860,6 +860,9 @@ module Csi
 
   def self.main(argv)
     Controller.new.main parse_argv(argv)
+  rescue OptionParser::ParseError => e
+    puts "#$0: #{e}"
+    exit 1
   end
 end
 
