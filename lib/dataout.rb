@@ -210,7 +210,8 @@ module DataOut
       end
     end
 
-    def pack(val, width)
+    def format(val, width)
+      val = "" if val.nil?
       case val
       when Numeric
         val_to_s(val).rjust(width)
@@ -219,12 +220,6 @@ module DataOut
       else
         val_to_s(val).ljust(width)
       end
-    end
-
-    def format(str, width)
-      s = str || ""
-      s = pack(s, width)
-      s
     end
 
     def folding(values, widths)
@@ -250,7 +245,7 @@ module DataOut
           end
           @out.print s + " "
         # end
-        #  @out.print pack(val, widths[i]) + " "
+        #  @out.print format(val, widths[i]) + " "
         end
         @out.puts
       end
