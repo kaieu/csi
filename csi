@@ -1,5 +1,5 @@
 #!/bin/sh
-MYRUBY="$HOME/bin/ruby-trunk /opt/local/bin/ruby1.9 $HOME/bin/ruby"
+MYRUBY="$HOME/bin/ruby-trunk /opt/local/bin/ruby2.0 $HOME/bin/ruby"
 for rubybin in $MYRUBY `echo $PATH | sed "s/:/\/ruby /g"`/ruby; do
   if [ -x "$rubybin" -a -z "$RUBY" ]; then
     RUBY="$rubybin"
@@ -14,7 +14,7 @@ exec "${RUBY:?ruby is not found}" -x "$0" "$@"
 # Author: kaieu
 #
 
-RUBY_VERSION >= '1.9.2' or abort "#$0: ruby 1.9.2 or higher required."
+RUBY_VERSION >= '2.0.0' or abort "#$0: ruby 2.0.0 or higher required."
 
 require 'yaml'
 require 'optparse'
@@ -180,7 +180,7 @@ module Csi
 
     def search_delim(line, delim = ";")
       quote = nil
-      line.chars.with_index do |c, i|
+      line.each_char.with_index do |c, i|
         if quote
           quote = nil if c == quote
         elsif c == '"' || c == "'"
