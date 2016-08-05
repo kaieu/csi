@@ -22,7 +22,7 @@ require 'pathname'
 #require 'io/console'
 
 $LOAD_PATH << Pathname(__FILE__).realpath.parent + "lib"
-require 'dataout'
+require 'csi/dataout'
 
 module Csi
   APPNAME = 'csi'
@@ -126,7 +126,7 @@ module Csi
     module_function
     def load_drivers
       begin
-        require 'db'
+        require 'csi/db'
       rescue LoadError
         STDERR.puts "DB driver load error: #$!"
       end
