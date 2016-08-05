@@ -6,11 +6,9 @@ module Csi
       add_factory %w(oracle-oci8 oracle), "Oracle connector using Ruby-OCI8"
 
       def initialize
-        begin
-          require 'oci8'
-        rescue LoadError
-          raise "Required ruby-oci8 library is not found. Try 'gem install ruby-oci8'."
-        end
+        require 'oci8'
+      rescue LoadError
+        raise "Required ruby-oci8 library is not found. Try 'gem install ruby-oci8'."
       end
 
       def connect(connstr, user, pass)

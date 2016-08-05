@@ -6,11 +6,9 @@ module Csi
       add_factory %w(postgres postgresql), "PostgreSQL Connector"
 
       def initialize
-        begin
-          require 'pg'
-        rescue LoadError
-          raise "Required pg library is not found. Try 'gem install pg'."
-        end
+        require 'pg'
+      rescue LoadError
+        raise "Required pg library is not found. Try 'gem install pg'."
       end
 
       def connect(connstr, user, pass)
