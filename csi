@@ -493,13 +493,17 @@ module Csi
           end
         },
       },
-      { key: /^\\d\s/,
-        name: '\d object name',
-        desc: 'describe schema object(table)',
+      { key: /^\\d\s*/,
+        name: '\d [object name]',
+        desc: 'describe schema object(table) or list them (if no params)',
         proc: proc{|ctrl, env, inp|
-          if /^\\d\s+(.*)$/ =~ inp
+          if /^\\d\s*(.*)$/ =~ inp
             table = $1
-            { action: Action.new(:query) {|env| env.conn.describe(table) } }
+            if table && !table.empty?
+              { action: Action.new(:query) {|env| env.conn.describe(table) } }
+	    else
+              { action: Action.new(:query) {|env| env.conn.tables } }
+            end
           else
             STDERR.puts "object name needed"
           end
@@ -587,13 +591,14 @@ module Csi
 
     def commandline_connection_select(dbconfs, opts)
       dbspec = opts[:dbspec]
-      if /^(\w+):([\w\/]+)@(.+)$/ =~ dbspec
+      if /^([^:]+):([-_a-zA-Z0-9]+)@(.+)$/ =~ dbspec
         conf = {
           'type'   => $1,
           'dburl'  => $3,
-          'dbuser' => $2.split('/')[0],
-          'dbpass' => $2.split('/')[1],
+          'dbuser' => $2,
+          'dbpass' => opts[:password],
         }
+        p conf
         conf['dbpass'] ||= conf['dbuser']
         dbspec = conf['dbuser'] # + '@' + conf['dburl']
         return dbspec, conf
@@ -825,6 +830,9 @@ module Csi
         end
         op.on('-d dbspec', "Specify DB by key or DB-spec") do |db|
           opts[:dbspec] = db
+        end
+        op.on('-p password', "Login password (when '-d' used)") do |pass|
+          opts[:password] = pass
         end
         op.on('-e sql', "Specify SQL to be executed") do |sql|
           opts[:script] << {:sql => sql}
