@@ -18,12 +18,18 @@ require 'csi/dataout'
 
 module Csi
   APPNAME = 'csi'
+  APPTITLE = "Common SQL interface"
+
+  # Support XDG Base Directory
+  xdg_conf_dir = ENV['XDG_CONFIG_HOME'] || File.join(ENV['HOME'], '.config')
+
   DEFAULT_CONFS = [
     File.join(ENV['HOME'], '.csi.conf'),
+    File.join(xdg_conf_dir, 'csi', 'config'),
     File.join(ENV['HOME'], 'etc', 'csi.conf'),
   ]
+
   HISTFILE = File.join(ENV['HOME'], '.csi_history')
-  APPTITLE = "Common SQL interface"
 
   RESERVED_WORDS = %w(
     SELECT INSERT UPDATE DELETE TRUNCATE EXECUTE COMMIT ROLLBACK BEGIN
