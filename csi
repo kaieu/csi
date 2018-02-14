@@ -129,7 +129,7 @@ module Csi
 
       # Additional commands specific to DB connection
       def commands
-        {}
+        []
       end
     end
 
@@ -358,7 +358,7 @@ module Csi
     end
 
     def process_commands(env, inp)
-      cmds = env.commands.merge(env.conn.commands)
+      cmds = env.conn.commands + env.commands
       cmds.each do |cmd|
         next unless cmd[:key] === inp
         res = cmd[:proc].call(@controller, env, inp)
@@ -798,7 +798,7 @@ module Csi
         return
       end
 
-      env, cui = setup(opts)
+      env, cui = setup(rc, opts)
 
       unless opts[:script].empty?
         batch_exec opts[:script], env, opts
