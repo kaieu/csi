@@ -509,7 +509,7 @@ module Csi
             table = $1
             if table && !table.empty?
               { action: Action.new(:query) {|env| env.conn.describe(table) } }
-	    else
+            else
               { action: Action.new(:query) {|env| env.conn.tables } }
             end
           else
