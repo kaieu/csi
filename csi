@@ -83,7 +83,8 @@ module Csi
       @@spec_map_by_type = {}
 
       def self.new_connection(type)
-        @@spec_map_by_type[type].connection_class.new
+        cs = @@spec_map_by_type[type] or raise "Unknown DB type '#{type}'"
+        cs.connection_class.new
       end
 
       def self.connect(type, connstr, user, pass)
