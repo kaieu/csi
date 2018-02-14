@@ -91,11 +91,14 @@ EOS
 
       def convert(org)
         apdx = nil
-        res = org.map do |c|
-          case c
-          when OCI8::CLOB
+        res = org.zip(@cursor.column_metadata).map do |e|
+          c = e[0]
+          m = e[1]
+          if c.is_a?(OCI8::CLOB)
             apdx = "---------- <<CLOB>> ----------\n" + c.read
             "<<CLOB>>"
+          elsif m.data_type == :raw
+            '0x' + c.unpack("H*").first
           else
             c
           end
