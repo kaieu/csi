@@ -620,10 +620,15 @@ module Csi
       return to_key(dbspec), dbconfs[dbspec]
     end
 
+    def show_dbconfs(dbconfs)
+      header = ["key", "type", "connection string", "user"]
+      records = [["0", "manual", "manual", "manual"]] +
+        dbconfs.map{|e| k, v = *e; [k, v['type'], v['dburl'], v['dbuser']] }
+      DataOut::TableOutput.new.display header, records
+    end
+
     def interactive_connection_select(dbconfs, cui)
-      DataOut::TableOutput.new.display ["key", "type", "user", "connection string"],
-        [["0", "manual", "manual", "manual"]] +
-        dbconfs.map{|e| [e[0], e[1]['type'], e[1]['dbuser'], e[1]['dburl']] }
+      show_dbconfs dbconfs
       while true
         sel = to_key(cui.getline("Choose DB key> "))
         if sel == 0
@@ -700,7 +705,7 @@ module Csi
     def list_dbtypes
       puts "Supported DB types:"
       Db.load_drivers
-      DataOut::TableOutput.new.display ["types", "description"],
+      DataOut::TableOutput.new.display ["type names", "description"],
         Db::Connection.specs.map{|s| [s.types.join(", "), s.description]}
     end
 
@@ -717,12 +722,15 @@ module Csi
       return nil
     end
 
-    def setup(opts)
+   def load_conf(opts)
       conffile = search_conffile(opts[:configfile])
       abort "no config file found" unless conffile
       rc = Config.load_rc(conffile, conffile + ".shadow")
       opts[:configfile] = conffile
+      rc
+    end
 
+    def setup(rc, opts)
       if rc[:environment]
         rc[:environment].each do |k, v|
           ENV[k] = v
@@ -741,7 +749,7 @@ module Csi
         e.history  = []
       end
 
-      return rc, env, cui
+      return env, cui
     end
 
     def batch_exec(scripts, env, opts)
@@ -784,7 +792,13 @@ module Csi
         return
       end
 
-      rc, env, cui = setup(opts)
+      rc = load_conf(opts)
+      if opts[:dbconf_list]
+        show_dbconfs rc[:dbconfs]
+        return
+      end
+
+      env, cui = setup(opts)
 
       unless opts[:script].empty?
         batch_exec opts[:script], env, opts
@@ -854,8 +868,11 @@ module Csi
         op.on('-E extended sql') do |esql|
           opts[:script] << {:sql => parse_esql(esql)}
         end
-        op.on('-l', "Show all available db type") do
+        op.on('-L', '--dbtypes', "Show all available db type") do
           opts[:type_list] = true
+        end
+        op.on('-l', '--dbconfs', "Show all db configurations") do
+          opts[:dbconf_list] = true
         end
         op.on('--clob', "Clob detail mode") do
           opts[:appendix] = true
