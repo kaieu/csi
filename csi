@@ -590,10 +590,10 @@ module Csi
 
     def manual_conf(cui)
       {
-        'type'   => cui.getline("db type="),
-        'dburl'  => cui.getline("db connection string="),
-        'dbuser' => cui.getline("user="),
-        'dbpass' => cui.getline("password="),
+        'type'   => cui.getline("db type = "),
+        'dburl'  => cui.getline("db connection string = "),
+        'dbuser' => cui.getline("user = "),
+        'dbpass' => cui.getline("password = "),
       }
     end
 
