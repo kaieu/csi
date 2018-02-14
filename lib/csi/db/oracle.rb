@@ -12,7 +12,7 @@ module Csi
       end
 
       def connect(connstr, user, pass)
-          @ora = OCI8.new(user, pass, connstr)
+        @ora = OCI8.new(user, pass, connstr)
       end
 
       def exec(sql)
@@ -33,8 +33,22 @@ module Csi
         @ora = nil
       end
 
+      def tables(where = "")
+        query <<EOS
+	SELECT OWNER, TABLE_NAME
+	FROM ALL_TABLES
+  #{where}
+	ORDER BY OWNER, TABLE_NAME
+EOS
+      end
+
       def describe(object, type = nil)
-        OracleColumns.new @ora.describe_table(object)
+        case object
+        when /^(\S+)\.\*$/
+          tables "WHERE OWNER='#$1'"
+        else
+          OracleColumns.new @ora.describe_table(object)
+        end
       end
     end
 
