@@ -126,6 +126,11 @@ module Csi
       alias :tables :not_supported
       # receive description of a specified table
       alias :describe :not_supported
+
+      # Additional commands specific to DB connection
+      def commands
+        {}
+      end
     end
 
     class DummyConnection < Connection
@@ -353,7 +358,8 @@ module Csi
     end
 
     def process_commands(env, inp)
-      env.commands.each do |cmd|
+      cmds = env.commands.merge(env.conn.commands)
+      cmds.each do |cmd|
         next unless cmd[:key] === inp
         res = cmd[:proc].call(@controller, env, inp)
         if res.is_a?(Hash)
