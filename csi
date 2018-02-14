@@ -152,12 +152,11 @@ module Csi
       loaded = 0
       files.each do |file|
         yaml = YAML.load_file(file)
-        dbconfs = yaml["database"]
         aliases = {}
         yaml["sqlalias"] and yaml["sqlalias"].each do |k, v|
           aliases['\\' + k] = v
         end
-        rc[:dbconfs]     = dbconfs || {}
+        rc[:dbconfs]     = yaml["database"] || {}
         rc[:aliases]     = aliases
         rc[:pager]       = yaml["pager"]
         rc[:environment] = yaml["environment"]
