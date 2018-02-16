@@ -665,13 +665,13 @@ module Csi
       cui = Cui.new(self, opts[:interactive])
       cui.complement_proc = proc{|s| complement_sql s}
       env = Environment.new.tap do |e|
-        select_connection e, rc[:dbconfs], cui, opts
         e.commands = COMMANDS
         e.aliases  = rc[:aliases]
         e.pager    = rc[:pager]
         e.opts     = opts
         e.history  = []
       end
+      select_connection env, rc[:dbconfs], cui, opts
 
       return env, cui
     end
@@ -828,3 +828,5 @@ module Csi
     exit 1
   end
 end
+
+# vim:set ts=2 sw=2 et ft=ruby:
