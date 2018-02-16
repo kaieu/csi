@@ -178,6 +178,11 @@ module DataOut
 
     LOCAL_TIMEZONE = Time.now.zone
 
+    def initialize(out, opts)
+      @out = out
+      @opts = opts
+    end
+
     def val_to_s(v)
       case v
       when String
@@ -214,9 +219,8 @@ module DataOut
 
     include StringUtils
 
-    def initialize(out = STDOUT, opts = {})
-      @out = out
-      @opts = opts
+    def initialize(out, opts = {})
+      super
       @pagesize = @opts[:pagesize] || 0
       @buffsize = @opts[:buffsize] || 1000
       @maxwidth = @opts[:maxwidth] || default_maxwidth
@@ -391,11 +395,6 @@ module DataOut
   class DetailOutput < Output
     type "detail"
 
-    def initialize(out, opts = {})
-      @out = out
-      @opts = opts
-    end
-
     def display(keys, res)
       colwidth = keys.map{|k| k.width}.max
       res.each do |row|
@@ -411,11 +410,6 @@ module DataOut
   class InsertSqlOutput < Output
     type "insert"
 
-    def initialize(out, opts = {})
-      @out = out
-      @opts = opts
-    end
-
     def display(keys, res)
       cols = keys.join(',')
       res.each do |row|
@@ -428,11 +422,6 @@ module DataOut
   # CSV出力
   class CsvOutput < Output
     type "csv"
-
-    def initialize(out, opts = {})
-      @out = out
-      @opts = opts
-    end
 
     def display(keys, res)
       @out.puts "#" + keys.join(',')
@@ -453,11 +442,6 @@ module DataOut
   # TT出力
   class TabularOutput < Output
     type "tab"
-
-    def initialize(out, opts = {})
-      @out = out
-      @opts = opts
-    end
 
     def display(keys, res)
       @out.puts "#" + keys.join("\t")
