@@ -543,15 +543,15 @@ module Csi
       return to_key(dbspec), dbconfs[dbspec]
     end
 
-    def show_dbconfs(dbconfs)
+    def show_dbconfs(dbconfs, opts)
       header = ["key", "type", "connection string", "user"]
       records = [["0", "manual", "manual", "manual"]] +
         dbconfs.map{|e| k, v = *e; [k, v['type'], v['dburl'], v['dbuser']] }
-      DataOut::TableOutput.new.display header, records
+      DataOut::TableOutput.new(STDOUT, opts).display header, records
     end
 
-    def interactive_connection_select(dbconfs, cui)
-      show_dbconfs dbconfs
+    def interactive_connection_select(dbconfs, opts, cui)
+      show_dbconfs dbconfs, opts
       while true
         sel = to_key(cui.getline("Choose DB key> "))
         if sel == 0
@@ -580,10 +580,11 @@ module Csi
     end
 
     def select_connection(env, dbconfs, cui, opts = {})
+      opts = env.opts.merge(opts)
       if opts[:dbspec]
         dbspec, conf = commandline_connection_select(dbconfs, opts)
       else
-        dbspec, conf = interactive_connection_select(dbconfs, cui)
+        dbspec, conf = interactive_connection_select(dbconfs, opts, cui)
       end
       abort "DB configuration error" unless conf
 
@@ -603,7 +604,7 @@ module Csi
     end
 
     def show_help(env)
-      DataOut::TableOutput.new.display ['command', 'description'],
+      DataOut::TableOutput.new(STDOUT, env.opts).display ['command', 'description'],
         env.commands.map{|c| [c[:name] || c[:key], c[:desc]]} +
         env.aliases.map{|k, v| [k, v]}
     end
@@ -717,7 +718,7 @@ module Csi
 
       rc = load_conf(opts)
       if opts[:dbconf_list]
-        show_dbconfs rc[:dbconfs]
+        show_dbconfs rc[:dbconfs], opts
         return
       end
 
