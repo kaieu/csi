@@ -182,13 +182,18 @@ module Csi
       @buff = []
     end
 
+    # 各DB固有のストアドプロシージャのように、csi がSQLで1文として扱えない構造の
+    # スクリプトの範囲を明示するためのキーワード
+    BLOCK_BEGIN_KEYS = %w(\begin --begin)
+    BLOCK_END_KEYS = %w(\end --end)
+
     # 引数newlineを内部バッファに連結し、SQLの1文単位でblockを呼ぶ
     def slice_statement(newline, &b)
       while newline
-        if empty? && newline == '\begin'
+        if empty? && BLOCK_BEGIN_KEYS.include?(newline)
           @in_block = true
           newline = nil
-        elsif @in_block && newline == '\end'
+        elsif @in_block && BLOCK_END_KEYS.include?(newline)
           sweep(&b)
           @in_block = false
           newline = nil
