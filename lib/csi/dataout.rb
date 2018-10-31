@@ -119,24 +119,25 @@ module StringUtils
     "\x1b[#{esc}m" + str + "\x1b[0m"
   end
 
-  def fit(str, maxwidth)
+  def fit(str, maxwidth, fold_at_eol)
     (1 .. maxwidth).each do |n|
       w = str[0, n].width
       return n if w == maxwidth
       return n - 1 if w > maxwidth
+      return n if fold_at_eol && str[n - 1] == "\n"
     end
     nil
   end
 
   # 文字列(str)を指定桁数(width)で折り返して配列にして返す。
-  def fold(str, width)
+  def fold(str, width, fold_at_eol = false)
     folded = []
-    v = str
-    while w = fit(v, width)
-      folded << v.class.new(v[0, w])
-      v = v.class.new(v[w .. -1])
+    rest = str
+    while n = fit(rest, width, fold_at_eol)
+      folded << rest.class.new(rest[0, n].chomp)  # eol char remains only when fold_at_eol = true
+      rest = rest.class.new(rest[n .. -1])
     end
-    folded << v unless v.empty?
+    folded << rest unless rest.empty?
     folded
   end
 end
@@ -183,10 +184,10 @@ module DataOut
       @opts = opts
     end
 
-    def val_to_s(v)
+    def val_to_s(v, escape_eol = true)
       case v
       when String
-        v.gsub(/\r?\n/, "\\n")
+        escape_eol ? v.gsub(/\r?\n/, "\\n") : v
       when BigDecimal
         # 最後の.0はとる
         v.to_s('F').gsub(/\.0$/, '')
@@ -234,7 +235,7 @@ module DataOut
       end
     end
 
-    def format(val, width)
+    def format(val, width, escape_eol)
       val = "" if val.nil?
       case val
       when DITTO
@@ -242,14 +243,14 @@ module DataOut
       when Numeric
         val_to_s(val).rjust(width)
       when String # DecoratedString
-        val.class.new(val_to_s(val).ljust(width))
+        val.class.new(val_to_s(val, escape_eol).ljust(width))
       else
         val_to_s(val).ljust(width)
       end
     end
 
-    def folding(values, widths)
-      folded = values.map.with_index{|v, i| fold(val_to_s(v), widths[i])}
+    def folding(values, widths, fold_at_eol)
+      folded = values.map.with_index{|v, i| fold(val_to_s(v, !fold_at_eol), widths[i], fold_at_eol)}
       lines_num = folded.map{|l| l.nil? ? 0 : l.size}.max
       (0 ... lines_num).each do |lnum|
         yield folded.map{|v| v[lnum] || ""}, lnum, lines_num
@@ -257,10 +258,11 @@ module DataOut
     end
 
     def putline(values, widths, linetype = :body)
-      folding values, widths do |vals, lnum, lines_num|
+      fold_at_eol = true
+      folding values, widths, fold_at_eol do |vals, lnum, lines_num|
         vals.each.with_index do |val, i|
           bottom = lnum == lines_num - 1
-          s = format(val, widths[i])
+          s = format(val, widths[i], !fold_at_eol)
           if @opts[:esc]
             case linetype
             when :head
