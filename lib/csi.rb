@@ -76,15 +76,20 @@ module Csi
 
     def validate_dbconfs(conf)
       return {} if conf.nil? # allow empty setting
-      abort "ERROR: database configuration is not mapping" unless conf.is_a?(Hash)
-      conf.each do |key, val|
-        errs = []
+
+      abort "CONF ERROR: database configuration is not mapping" unless conf.is_a?(Hash)
+
+      invalid = {}
+      conf.each do |dbkey, val|
+        val ||= {}
         missing = %w(type dburl dbuser dbpass).select{|f| val[f].nil?}
-        if missing.size > 0
-          abort "ERROR: database '#{key}' requires following field(s); " + missing.join(",")
-        end
+        invalid[dbkey] = missing if missing.size > 0
       end
-      return conf
+      invalid.each do |dbkey, missing|
+        $stderr.puts "CONF ERROR: database '#{dbkey}' not loaded " +
+            "because of missing parameters; " + missing.join(",")
+      end
+      conf.reject{|k, v| invalid.include?(k)}
     end
 
     # 設定ファイルを読み込んで :dbconfs, :aliases, :pager を持つハッシュを返す
