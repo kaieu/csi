@@ -21,7 +21,7 @@ module Csi
         params[:port] = port if port
         params[:dbname] = dbname if dbname
 
-        @pg = PGconn.open(params)
+        @pg = PG::Connection.open(params)
       end
 
       def parse_connstr(connstr)
@@ -38,11 +38,16 @@ module Csi
 
       def query(sql)
         res = @pg.exec(sql)
-        if res.is_a?(PGresult)
+        if res.is_a?(PG::Result)
           PgResult.new res
         else
           res
         end
+      end
+
+      def tables
+        query "SELECT schemaname AS SCHEMA, relname as TABLE " +
+              "FROM pg_stat_user_tables ORDER BY schemaname, relname"
       end
 
       def close
